@@ -197,7 +197,9 @@ export function withScroll(scene: Scene, p: number, title: string, cards: readon
           } else putAt(col + 1, ty, ICON[it.icon], WHITE)
           putAt(col + 4, ty, it.label, it.muted ? DIM : WHITE)
           const track = control(it, ty, mid, col + bw, railCol * TEXT_PX + 8)
-          spans.push({ id: it.id, from: (it.mute ? L + 29 : L) / W, to: (L + BW) / W, y: [T, T + 30], track })
+          // A value beside a key (the track's name): only the name and its arrows switch it, clear of the key.
+          const from = it.mute && it.slider === undefined && it.value !== undefined ? (col + bw - 2 - textWidth(it.value)) * TEXT_PX - 10 : it.mute ? L + 29 : L
+          spans.push({ id: it.id, from: from / W, to: (L + BW) / W, y: [T, T + 30], track })
         })
       })
     } else {

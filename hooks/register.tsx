@@ -102,6 +102,12 @@ async function refreshBudget($: EngineInterface, save: Save, info: Info, seen: S
   await $.store.set('usage:budget', { at: seen.budgetAt, value: b } satisfies Stamped<Budget>)
 }
 
+// A setting a click changed, written without waiting: the picture answers the click at once, even where the
+// store is slow to write (a Windows file another session has open).
+function keep($: EngineInterface, key: string, value: unknown) {
+  void $.store.set(key, value).catch(() => {})
+}
+
 // /pixmage off and the hide button: kept under this session's id, so reopening the chat keeps it off.
 async function storeHidden($: EngineInterface, hidden: boolean) {
   const key = `hidden:${await $.session.id()}`
@@ -688,7 +694,7 @@ export const register: Register = (on, options) => {
     if (what === 'gear') { scroll.target = scroll.target === 1 ? 0 : 1; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) }
     if (what === 'hide' && scroll.target === 1) { scroll.target = 0; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) } // on the settings page the cross closes the page
     else if (what === 'hide') { hidden = true; scroll.target = scroll.p = 0; await storeHidden($, true); $.ui.toast(t(lang, 'hidden')) }
-    if (what === 'sound') { soundOn = !soundOn; await $.store.set('sound', soundOn); say(t(lang, soundOn ? 'soundOn' : 'soundOff')) }
+    if (what === 'sound') { soundOn = !soundOn; keep($, 'sound', soundOn); say(t(lang, soundOn ? 'soundOn' : 'soundOff')) }
     if (what === 'music') { music.on = !music.on; music.failed = false; await $.store.set('music', music.on); void tendMusic(); say(t(lang, music.on ? 'musicOn' : 'musicOff')) }
     if (what === 'track') { // the next track, by name, played at once so it can be heard
       const list = await musicTracks($)
@@ -704,21 +710,21 @@ export const register: Register = (on, options) => {
         say(`${ICON.note} ${trackTitle(next)}`)
       }
     }
-    if (what === 'shuffle') { music.shuffle = !music.shuffle; await $.store.set('music:shuffle', music.shuffle); say(`${t(lang, 'playMode')}：${t(lang, music.shuffle ? 'shuffle' : 'repeat')}`) }
+    if (what === 'shuffle') { music.shuffle = !music.shuffle; keep($, 'music:shuffle', music.shuffle); say(`${t(lang, 'playMode')}：${t(lang, music.shuffle ? 'shuffle' : 'repeat')}`) }
     if (what === 'clock') {
       info.clock = info.clock?.countdown ? {} : info.clock?.h12 ? { countdown: true } : { h12: true } // 24 → 12 → time left → 24
-      await $.store.set('clock', info.clock)
+      keep($, 'clock', info.clock)
       say(`${t(lang, 'clockLabel')}：${t(lang, info.clock.countdown ? 'clockLeft' : info.clock.h12 ? 'clock12' : 'clock24')}`)
     }
-    if (what === 'money') { info.money = !info.money; await $.store.set('money', info.money) } // MON: the share, or the money
+    if (what === 'money') { info.money = !info.money; keep($, 'money', info.money) } // MON: the share, or the money
     if (what === 'pomo') { // the hourglass: start 25 minutes, or (running) stop
       pomoUntil = pomoUntil === undefined ? Date.now() + POMO_MS : undefined
-      await $.store.set('pomo', pomoUntil ?? null)
+      keep($, 'pomo', pomoUntil ?? null)
       say(t(lang, pomoUntil ? 'pomoStart' : 'pomoStop'))
     }
     if (what === 'week') { // the 7-day reset, on its own: weekday → date → time left → weekday
       info.week = info.week?.countdown ? {} : info.week?.date ? { countdown: true } : { date: true }
-      await $.store.set('week', info.week)
+      keep($, 'week', info.week)
       say(`${t(lang, 'weekLabel')}：${t(lang, info.week.countdown ? 'clockLeft' : info.week.date ? 'weekDate' : 'weekDay')}`)
     }
     if (what === 'compact') { // along the slider: the step there; elsewhere on the bar: the next step
@@ -742,7 +748,7 @@ export const register: Register = (on, options) => {
       else { const n = ++retuning; void $.clock.sleep(300).then(() => { if (n === retuning) retune($, music) }) } // the music, once the slider rests
       say(`${t(lang, key === 'music' ? 'music' : 'sound')}：${Math.round(volume[key] * 100)}%`)
     }
-    if (what === 'lang') { lang = nextLang(lang); uiLang = lang; await $.store.set('lang', lang); say(t(lang, 'langSet')) }
+    if (what === 'lang') { lang = nextLang(lang); uiLang = lang; keep($, 'lang', lang); say(t(lang, 'langSet')) }
     if (what === 'row') {
       const modes: RowMode[] = workLogHere ? ['todo', 'scribe', 'work-log'] : ['todo', 'scribe']
       rowMode = modes[(modes.indexOf(rowMode) + 1) % modes.length]!
