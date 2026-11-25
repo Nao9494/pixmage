@@ -22,6 +22,7 @@ const S = {
   scribeWriting: { zh: '書記官正在記錄這回合…', en: 'The scribe is writing this turn down…', ja: '書記がこのターンを記録中…' },
   scribeIdle: { zh: '冒險即將開始，有什麼任務要交給我？', en: 'An adventure awaits. What is our quest?', ja: '冒険のはじまり。どんな任務にする？' },
   noMusic: { zh: 'music 資料夾裡沒有音樂', en: 'No music in the music folder', ja: 'music フォルダに曲がありません' },
+  noPlayer: { zh: '這台電腦無法播放聲音（Claude Code 在 Windows 和 Linux 上沒有播放器）', en: 'No sound on this computer: Claude Code has no audio player on Windows or Linux', ja: 'このパソコンでは音を出せません（Windows／Linux 版に再生機能がありません）' },
   musicFailed: { zh: '背景音樂播不出來', en: 'The music could not play', ja: '音楽を再生できません' },
   compacting: { zh: '對話快滿了（{0}%），自動壓縮', en: 'The conversation is nearly full ({0}%): compacting', ja: '会話がいっぱい（{0}%）：自動で圧縮します' },
   cmdDesc: { zh: 'Pixmage 像素法師：打開畫面（off 關掉；sound 音效；clock 時間格式；compact 自動壓縮）', en: 'Pixmage: show the band (off hides it; sound; clock; compact)', ja: 'Pixmage：表示する（off で隠す／sound／clock／compact）' },

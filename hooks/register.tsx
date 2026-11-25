@@ -253,6 +253,7 @@ async function playMusic($: EngineInterface, m: Music, change = false, from?: nu
   // Played once each time, never looped by the player: its end picks what comes next, so a change of play mode
   // takes hold there without cutting the track short.
   let played: boolean
+  const began = Date.now()
   if (from === undefined || !mp3) {
     if (mp3) { m.pos = { t0: Date.now(), byte: mp3.first, rate: mp3.rate }; void $.store.set('music:pos', { track, byte: m.pos.byte, t0: m.pos.t0 }) }
     played = await $.audio.play({ asset: `music/${track}` }, { gain, signal: stop.signal }).then(() => true, () => false)
@@ -272,6 +273,9 @@ async function playMusic($: EngineInterface, m: Music, change = false, from?: nu
   if (m.stop !== stop) return // stopped or skipped meanwhile
   m.stop = undefined
   m.pos = undefined
+  // A track "over" at once: no player here (Windows and Linux have none), so a play is skipped. Without this
+  // the next track would start, end and start again without a pause, writing the store each time.
+  if (played && from === undefined && Date.now() - began < 1500) { m.failed = true; dlog('music: no player here'); $.ui.toast(t(uiLang, 'noPlayer')); return }
   if (played) void playMusic($, m, m.shuffle) // the track ended: the same again, or (shuffle) the next
   else { m.failed = true; $.ui.toast(t(uiLang, 'musicFailed')) }
 }
