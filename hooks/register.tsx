@@ -118,11 +118,27 @@ async function flushDebug($: EngineInterface) {
   await $.fs.write(`${$.plugin.root}/debug.log`, `${debugLines.join('\n')}\n`).catch(() => $.store.set('debug:log', debugLines.slice(-150))) // no write there: the store keeps the last lines
 }
 
-// A setting a click changed, written without waiting: the picture answers the click at once, even where the
-// store is slow to write (a Windows file another session has open).
+// Settings a click changed: the picture answers at once, and the store is written a moment after the clicks stop,
+// one write per setting (a drag of a slider makes dozens of changes). A write the store refuses (a Windows lock
+// another session holds) is tried again. Until it lands, reads here see the new value.
+const pending = new Map<string, unknown>()
+let flushing = false
 function keep($: EngineInterface, key: string, value: unknown) {
-  void $.store.set(key, value).catch(err => dlog(`store.set ${key} failed: ${String(err)}`))
+  pending.set(key, value)
+  if (!flushing) { flushing = true; $.clock.after(400, () => void flushKept($, 0)) }
 }
+async function flushKept($: EngineInterface, tries: number) {
+  for (const [key, value] of [...pending]) {
+    try {
+      await $.store.set(key, value)
+      if (pending.get(key) === value) pending.delete(key) // unless it changed again meanwhile
+    } catch (err) { dlog(`store.set ${key} failed (try ${tries + 1}): ${String(err)}`) }
+  }
+  if (pending.size && tries < 8) $.clock.after(300 * (tries + 1), () => void flushKept($, tries + 1))
+  else flushing = false
+}
+// A setting as this session has it: its own change not yet written, else the store's.
+const getKept = ($: EngineInterface, key: string) => (pending.has(key) ? Promise.resolve(pending.get(key)) : $.store.get(key))
 
 // /pixmage off and the hide button: kept under this session's id, so reopening the chat keeps it off.
 async function storeHidden($: EngineInterface, hidden: boolean) {
@@ -379,32 +395,32 @@ export const register: Register = (on, options) => {
     // The settings any session may change, read again with each sync so a change in one reaches them all
     // (the slider being dragged here is left alone).
     readSettings = async () => {
-      soundOn = (await $.store.get('sound')) !== false
-      lang = ((await $.store.get('lang')) as Lang | undefined) ?? 'zh'
+      soundOn = (await getKept($, 'sound')) !== false
+      lang = ((await getKept($, 'lang')) as Lang | undefined) ?? 'zh'
       uiLang = lang
-      info.clock = ((await $.store.get('clock')) as Info['clock']) ?? {}
-      info.week = ((await $.store.get('week')) as Info['week']) ?? {}
-      info.money = (await $.store.get('money')) === true
-      const kept = await $.store.get('compact') // a percent; true from before the percents meant 80
+      info.clock = ((await getKept($, 'clock')) as Info['clock']) ?? {}
+      info.week = ((await getKept($, 'week')) as Info['week']) ?? {}
+      info.money = (await getKept($, 'money')) === true
+      const kept = await getKept($, 'compact') // a percent; true from before the percents meant 80
       if (!(held === 'compact' && Date.now() - draggedAt < 2000)) compactAt = kept === true ? 80 : typeof kept === 'number' ? kept : 0
-      fx = ((await $.store.get('fx')) as Fx | undefined) ?? ((await $.store.get('calm')) === true ? 'eco' : 'normal') // calm was eco, before there were three
+      fx = ((await getKept($, 'fx')) as Fx | undefined) ?? ((await $.store.get('calm')) === true ? 'eco' : 'normal') // calm was eco, before there were three
       if (!(fx in FX_PACE)) fx = 'normal'
-      const sfxVol = (await $.store.get('volume:sfx')) as number | undefined
+      const sfxVol = (await getKept($, 'volume:sfx')) as number | undefined
       if (sfxVol !== undefined && !(held === 'sfxVol' && Date.now() - draggedAt < 2000)) volume.sfx = sfxVol
     }
     await readSettings()
     debugOn = (await $.store.get('debug')) === true
-    readPomo = async () => { const v = await $.store.get('pomo'); pomoUntil = typeof v === 'number' && v > Date.now() ? v : undefined }
+    readPomo = async () => { const v = await getKept($, 'pomo'); pomoUntil = typeof v === 'number' && v > Date.now() ? v : undefined }
     await readPomo()
-    music.on = (await $.store.get('music')) !== false
-    music.shuffle = (await $.store.get('music:shuffle')) === true
+    music.on = (await getKept($, 'music')) !== false
+    music.shuffle = (await getKept($, 'music:shuffle')) === true
     const old = Math.min(1, ((await $.store.get('volume')) as number | undefined) ?? 1) // one volume for both, before they split (older saves went up to 1.6)
-    volume.music = ((await $.store.get('volume:music')) as number | undefined) ?? old
-    volume.sfx = ((await $.store.get('volume:sfx')) as number | undefined) ?? old
+    volume.music = ((await getKept($, 'volume:music')) as number | undefined) ?? old
+    volume.sfx = ((await getKept($, 'volume:sfx')) as number | undefined) ?? old
     tendMusic = async () => {
       const sid = await $.session.id()
       // The settings, as any session last set them: the player picks them up here (volume and mode from its next track).
-      const [wanted, shuffle, vol, owner, track, pick] = await Promise.all([$.store.get('music'), $.store.get('music:shuffle'), $.store.get('volume:music'), $.store.get('music:owner'), $.store.get('music:track'), $.store.get('music:pick')]) as [unknown, unknown, number | undefined, Owner | null | undefined, string | undefined, number | undefined]
+      const [wanted, shuffle, vol, owner, track, pick] = await Promise.all([getKept($, 'music'), getKept($, 'music:shuffle'), getKept($, 'volume:music'), $.store.get('music:owner'), getKept($, 'music:track'), getKept($, 'music:pick')]) as [unknown, unknown, number | undefined, Owner | null | undefined, string | undefined, number | undefined]
       music.on = wanted !== false
       music.shuffle = shuffle === true
       if (track && (music.away || !music.stop)) music.track = track // shown on the settings page
@@ -425,9 +441,9 @@ export const register: Register = (on, options) => {
       else if (music.away || !music.stop) { music.away = false; void playMusic($, music, false, undefined, true) } // taking over: from where it was
       else if (louder) retune($, music)
     }
-    music.track = (await $.store.get('music:track')) as string | undefined // the same track as last time
+    music.track = (await getKept($, 'music:track')) as string | undefined // the same track as last time
     titles = await $.fs.read(`${$.plugin.root}/music/titles.json`).then(t => JSON.parse(t) as Record<string, string>, () => ({}))
-    seenPick = ((await $.store.get('music:pick')) as number | undefined) ?? 0
+    seenPick = ((await getKept($, 'music:pick')) as number | undefined) ?? 0
     await $.command.register({ name: 'pixmage', description: t(lang, 'cmdDesc'), argumentHint: '[off | sound on|off | clock 24|12|left | compact on|off]', immediate: true })
 
     const usage = await $.session.usage()
@@ -713,18 +729,18 @@ export const register: Register = (on, options) => {
       lastActive = Date.now() // a press wakes the picture, which may have stopped while idle
       if (what === 'gear') { scroll.target = scroll.target === 1 ? 0 : 1; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) }
       if (what === 'hide' && scroll.target === 1) { scroll.target = 0; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) } // on the settings page the cross closes the page
-      else if (what === 'hide') { hidden = true; scroll.target = scroll.p = 0; await storeHidden($, true); $.ui.toast(t(lang, 'hidden')) }
+      else if (what === 'hide') { hidden = true; scroll.target = scroll.p = 0; void storeHidden($, true).catch(() => {}); $.ui.toast(t(lang, 'hidden')) }
       if (what === 'sound') { soundOn = !soundOn; keep($, 'sound', soundOn); say(t(lang, soundOn ? 'soundOn' : 'soundOff')) }
-      if (what === 'music') { music.on = !music.on; music.failed = false; await $.store.set('music', music.on); void tendMusic(); say(t(lang, music.on ? 'musicOn' : 'musicOff')) }
+      if (what === 'music') { music.on = !music.on; music.failed = false; keep($, 'music', music.on); void tendMusic(); say(t(lang, music.on ? 'musicOn' : 'musicOff')) }
       if (what === 'track') { // the next track, by name, played at once so it can be heard
         const list = await musicTracks($)
         if (list.length) {
           const next = list[(list.indexOf(music.track ?? '') + 1) % list.length]!
           music.track = next
-          await $.store.set('music:track', next)
+          keep($, 'music:track', next)
           const now = Date.now()
           seenPick = now
-          await $.store.set('music:pick', now)
+          keep($, 'music:pick', now)
           if (music.on && music.stop) void playMusic($, music) // ours: straight away; another's picks it up within its sync
           else if (music.on) void tendMusic()
           say(`${ICON.note} ${trackTitle(next)}`)
@@ -752,18 +768,18 @@ export const register: Register = (on, options) => {
         const next = at !== undefined ? COMPACT_STEPS[Math.round(at * (COMPACT_STEPS.length - 1))]! : d.drag ? compactAt : COMPACT_STEPS[(COMPACT_STEPS.indexOf(compactAt) + 1) % COMPACT_STEPS.length]!
         if (next === compactAt) return {}
         compactAt = next
-        void $.store.set('compact', compactAt) // not awaited: a drag redraws at once
+        keep($, 'compact', compactAt) // written once the drag stops
         say(`${t(lang, 'compact')}：${compactAt ? `${compactAt}%` : t(lang, 'off')}`)
       }
       if (what === 'clawd' || what === 'cat' || what === 'castle') game.poke(what)
-      if (what === 'fx') { fx = FXS[(FXS.indexOf(fx) + 1) % FXS.length]!; void $.store.set('fx', fx); say(`${t(lang, 'fx')}：${t(lang, FX_WORD[fx])}`) }
+      if (what === 'fx') { fx = FXS[(FXS.indexOf(fx) + 1) % FXS.length]!; keep($, 'fx', fx); say(`${t(lang, 'fx')}：${t(lang, FX_WORD[fx])}`) }
       if (what === 'musicVol' || what === 'sfxVol') { // along the slider: the step there; elsewhere on the bar: the next step
         const key = what === 'musicVol' ? 'music' : 'sfx'
         const at = sliderAt(cardSpans, what, f), now = volumeStep(volume[key])
         const step = at !== undefined ? Math.round(at * (VOLUMES.length - 1)) : d.drag ? now : (now + 1) % VOLUMES.length
         if (step === now) return {}
         volume[key] = VOLUMES[step]!
-        void $.store.set(`volume:${key}`, volume[key]) // not awaited: a drag redraws at once
+        keep($, `volume:${key}`, volume[key]) // written once the drag stops
         if (key === 'sfx') sfx($, soundOn, 'spawn') // a sound at the new loudness (at most every half second, dragged)
         else { const n = ++retuning; void $.clock.sleep(300).then(() => { if (n === retuning) retune($, music) }) } // the music, once the slider rests
         say(`${t(lang, key === 'music' ? 'music' : 'sound')}：${Math.round(volume[key] * 100)}%`)
@@ -772,7 +788,7 @@ export const register: Register = (on, options) => {
       if (what === 'row') {
         const modes: RowMode[] = workLogHere ? ['todo', 'scribe', 'work-log'] : ['todo', 'scribe']
         rowMode = modes[(modes.indexOf(rowMode) + 1) % modes.length]!
-        await storeRow($, rowMode)
+        void storeRow($, rowMode).catch(() => {})
         await loadRow($, info, rowMode, tasks)
         say(t(lang, rowMode === 'scribe' ? 'scribeOn' : rowMode === 'todo' ? 'todoOn' : 'scribeOff'))
         if (info.scribe && answer) void writeScribe($, info, prompt, answer, lang).then(fresh => { if (fresh) { flash('bulb', 2500); $.ui.invalidate('ui.render') } })
