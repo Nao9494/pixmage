@@ -275,7 +275,9 @@ export function statusSegs(info: Info, save: { level: number; xp: number }, need
     out.push(SEP, { text: `${ICON.coin}TODAY `, color: C.label }, { text: fit(b.today === undefined ? '--' : money(b.today), 8, true), color: b.today === undefined ? C.dim : C.money }) // a fixed width: the bar holds still
   } else {
     // The two windows always hold their places; one not reported yet waits there empty.
-    const five = info.limits.find(l => l.kind === 'five_hour'), seven = info.limits.find(l => l.kind === 'seven_day')
+    // A window whose reset has passed is empty again, though no reply has said so yet: 0%, its next reset unknown.
+    const fresh = (l?: Limit) => (l?.resetsAt && Date.parse(l.resetsAt) <= now.getTime() ? { ...l, percentUsed: 0, resetsAt: undefined } : l)
+    const five = fresh(info.limits.find(l => l.kind === 'five_hour')), seven = fresh(info.limits.find(l => l.kind === 'seven_day'))
     // The reset time alone: the five-hour window never runs past tomorrow morning, so no date.
     // The 12-hour clock leads with its AM/PM mark, which says as much as the "~".
     const at = ` ${info.clock?.h12 && five?.resetsAt ? '' : '~'}${five?.resetsAt ? resetLabel(five.resetsAt, now, info.clock).split(' ').pop() : '--:--'}`
