@@ -179,12 +179,14 @@ export function withScroll(scene: Scene, p: number, title: string, cards: readon
       // its rim and bevel (4) everything keeps 5 or 6 clear. The icon is the second column's glyph (12 × 12, 6 in
       // and 5 down), the name starts at the fifth column, 8 past the icon; the value ends two columns in from the
       // bar's end, a 4 × 6 arrow 3 past it on each side; a switch ends where the right arrow does.
-      const per = 3, gap = 2
+      // The groups that have cards (no sound group where nothing can play), side by side, as wide as they can be.
+      const groups = ORDER_A.filter(ids => ids.some(id => byId.has(id)))
+      const per = groups.length, gap = 2
       let bw = Math.floor((cols - inner * 2 - gap * (per - 1)) / per)
       if ((cols - per * bw - gap * (per - 1)) % 2) bw -= 1 // an even remainder: equal margins either side
       const margin = (cols - per * bw - gap * (per - 1)) / 2
       const TOPS = [40, 74, 108], HEAD = 24 // the bars' tops; the headings' words
-      ORDER_A.forEach((ids, gi) => {
+      groups.forEach((ids, gi) => {
         const col = margin + gi * (bw + gap), name = heads[gi] ?? ''
         // The group's rails all start past its longest name, so they are as long as each other.
         const railCol = Math.max(0, ...ids.map(id => byId.get(id)).filter(c => c?.slider !== undefined).map(c => col + 4 + textWidth(c!.label)))

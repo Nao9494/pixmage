@@ -879,11 +879,7 @@ export const register: Register = (on, options) => {
       const weekWord = info.week?.countdown ? 'clockLeft' : info.week?.date ? 'weekDate' : 'weekDay'
       const pct = (v: number) => `${Math.round(v * 100)}%`
       const cards: Card[] = [
-        ...(soundless ? [ // no player here: the sound column greyed out, saying so
-          { id: 'musicVol', mute: 'music', muted: true, icon: 'setVolume', label: t(lang, 'music'), value: t(lang, 'unsupported'), slider: 0 },
-          { id: 'sfxVol', mute: 'sound', muted: true, icon: 'setVolume', label: t(lang, 'sound'), value: t(lang, 'unsupported'), slider: 0 },
-          { id: 'track', mute: 'shuffle', muted: true, icon: 'setTracks', label: t(lang, 'playMode'), value: t(lang, 'unsupported') },
-        ] satisfies Card[] : [
+        ...(soundless ? [] : [ // no player here (Windows, Linux): no sound group at all
           { id: 'musicVol', mute: 'music', muted: !music.on, icon: 'setVolume', label: t(lang, 'music'), value: pct(volume.music), slider: volumeStep(volume.music) / (VOLUMES.length - 1) },
           { id: 'sfxVol', mute: 'sound', muted: !soundOn, icon: 'setVolume', label: t(lang, 'sound'), value: pct(volume.sfx), slider: volumeStep(volume.sfx) / (VOLUMES.length - 1) },
           { id: 'track', mute: 'shuffle', muted: false, icon: music.shuffle ? 'setShuffle' : 'setTracks', label: t(lang, 'playMode'), value: clip(trackTitle(music.track), 11) }, // the key: repeat or shuffle; the name: the next track
@@ -895,7 +891,7 @@ export const register: Register = (on, options) => {
         { id: 'lang', icon: 'setLang', label: t(lang, 'lang'), value: t(lang, 'langName') },
         { id: 'fx', icon: 'setMotion', label: t(lang, 'fx'), value: t(lang, FX_WORD[fx]), choices: FXS.map(x => t(lang, FX_WORD[x])) },
       ]
-      const heads = [t(lang, 'secSound'), t(lang, 'secShow'), t(lang, 'secGeneral')] // layout A (B is kept in settings.ts, unused)
+      const heads = [...(soundless ? [] : [t(lang, 'secSound')]), t(lang, 'secShow'), t(lang, 'secGeneral')] // layout A (B is kept in settings.ts, unused)
       const paged = withScroll(drawn, scroll.p >= 1 ? 1 : 1 - (1 - scroll.p) ** 2, notice?.text ?? t(lang, 'title'), cards, 'A', heads) // eased out
       const scene = paged.scene
       cardSpans = paged.cards

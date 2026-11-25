@@ -23,7 +23,6 @@ const S = {
   scribeIdle: { zh: '冒險即將開始，有什麼任務要交給我？', en: 'An adventure awaits. What is our quest?', ja: '冒険のはじまり。どんな任務にする？' },
   noMusic: { zh: 'music 資料夾裡沒有音樂', en: 'No music in the music folder', ja: 'music フォルダに曲がありません' },
   noSound: { zh: '這台電腦沒有聲音（Claude Code 在 Windows／Linux 上不能播放）', en: 'No sound on this computer (Claude Code cannot play it on Windows or Linux)', ja: 'このパソコンでは音が出ません（Windows／Linux 非対応）' },
-  unsupported: { zh: '不支援', en: 'N/A', ja: '非対応' },
   noPlayer: { zh: '這台電腦無法播放聲音（Claude Code 在 Windows 和 Linux 上沒有播放器）', en: 'No sound on this computer: Claude Code has no audio player on Windows or Linux', ja: 'このパソコンでは音を出せません（Windows／Linux 版に再生機能がありません）' },
   musicFailed: { zh: '背景音樂播不出來', en: 'The music could not play', ja: '音楽を再生できません' },
   compacting: { zh: '對話快滿了（{0}%），自動壓縮', en: 'The conversation is nearly full ({0}%): compacting', ja: '会話がいっぱい（{0}%）：自動で圧縮します' },
