@@ -1,0 +1,76 @@
+// The words on the picture and in the toasts, in the language picked on the settings page.
+
+export type Lang = 'zh' | 'en' | 'ja'
+export const LANGS: readonly Lang[] = ['zh', 'en', 'ja']
+
+const S = {
+  title: { zh: '設定', en: 'Settings', ja: '設定' },
+  sound: { zh: '音效', en: 'Sound', ja: 'SE' },
+  music: { zh: '音樂', en: 'Music', ja: 'BGM' },
+  scribe: { zh: '書記官', en: 'Scribe', ja: '書記' },
+  lang: { zh: '語言', en: 'Language', ja: '言語' },
+  langName: { zh: '中文', en: 'English', ja: '日本語' },
+  playMode: { zh: '播放', en: 'Play', ja: '再生' },
+  repeat: { zh: '單曲循環', en: 'Repeat', ja: 'リピート' },
+  shuffle: { zh: '隨機播放', en: 'Shuffle', ja: 'シャッフル' },
+  rowLabel: { zh: '下排顯示', en: 'Footer', ja: '下段' },
+  worklog: { zh: '工作紀錄', en: 'Work log', ja: '作業記録' },
+  todo: { zh: '待辦事項', en: 'Tasks', ja: 'タスク' },
+  todoOn: { zh: '下排顯示 Claude 的待辦事項', en: "Showing Claude's task list", ja: 'Claude のタスクを表示します' },
+  todoNone: { zh: '還沒有待辦事項', en: 'No tasks yet', ja: 'まだタスクはありません' },
+  todoNext: { zh: '下一步：', en: 'Next: ', ja: '次：' },
+  scribeWriting: { zh: '書記官正在記錄這回合…', en: 'The scribe is writing this turn down…', ja: '書記がこのターンを記録中…' },
+  scribeIdle: { zh: '冒險即將開始，有什麼任務要交給我？', en: 'An adventure awaits. What is our quest?', ja: '冒険のはじまり。どんな任務にする？' },
+  noMusic: { zh: 'music 資料夾裡沒有音樂', en: 'No music in the music folder', ja: 'music フォルダに曲がありません' },
+  musicFailed: { zh: '背景音樂播不出來', en: 'The music could not play', ja: '音楽を再生できません' },
+  compacting: { zh: '對話快滿了（{0}%），自動壓縮', en: 'The conversation is nearly full ({0}%): compacting', ja: '会話がいっぱい（{0}%）：自動で圧縮します' },
+  cmdDesc: { zh: 'Pixmage 像素法師：打開畫面（off 關掉；sound 音效；clock 時間格式；compact 自動壓縮）', en: 'Pixmage: show the band (off hides it; sound; clock; compact)', ja: 'Pixmage：表示する（off で隠す／sound／clock／compact）' },
+  cmdClock12: { zh: '重置時間改成 12 小時制（上面一點是上午，下面一點是下午）。', en: 'Reset times now use the 12-hour clock (a dot on top is AM, below is PM).', ja: 'リセット時刻を 12 時間制にしました（上の点が午前、下の点が午後）。' },
+  cmdClockLeft: { zh: '重置時間改成倒數（還剩多久）。', en: 'Reset times now count down (time left).', ja: 'リセット時刻を残り時間で表示します。' },
+  cmdClock24: { zh: '重置時間改成 24 小時制。', en: 'Reset times now use the 24-hour clock.', ja: 'リセット時刻を 24 時間制にしました。' },
+  cmdCompactOn: { zh: '自動壓縮開啟：對話塞到 {0}% 時會自動壓縮。', en: 'Auto-compact on: the conversation compacts at {0}% full.', ja: '自動圧縮オン：会話が {0}% になると圧縮します。' },
+  cmdCompactOff: { zh: '自動壓縮關閉：CTX 條只提醒，不會自動壓縮。', en: 'Auto-compact off: the CTX bar only warns.', ja: '自動圧縮オフ：CTX バーは知らせるだけです。' },
+  cmdSoundOn: { zh: '音效開啟（每個對話都會記住）。', en: 'Sound on (every session remembers).', ja: '効果音オン（すべての会話で有効）。' },
+  cmdSoundOff: { zh: '音效關閉，背景音樂也停了。', en: 'Sound off, and the music stopped too.', ja: '効果音オフ、音楽も止めました。' },
+  cmdShow: { zh: 'Pixmage 出發！Lv {0}，XP {1}/{2}，已擊敗 {3} 隻。', en: 'Pixmage sets out! Lv {0}, XP {1}/{2}, {3} defeated.', ja: 'Pixmage 出発！Lv {0}、XP {1}/{2}、{3} 体撃破。' },
+  cmdHide: { zh: 'Pixmage 休息中！Lv {0}，XP {1}/{2}，已擊敗 {3} 隻。', en: 'Pixmage rests. Lv {0}, XP {1}/{2}, {3} defeated.', ja: 'Pixmage 休憩中。Lv {0}、XP {1}/{2}、{3} 体撃破。' },
+  todoDone: { zh: '待辦全部完成！', en: 'All tasks done!', ja: 'タスク完了！' },
+  clockLabel: { zh: '5H重置', en: '5h reset', ja: '5H回復' },
+  clock24: { zh: '24小時制', en: '24-hour', ja: '24時間制' },
+  clock12: { zh: '12小時制', en: '12-hour', ja: '12時間制' },
+  clockLeft: { zh: '倒數', en: 'Countdown', ja: '残り時間' },
+  pomoStart: { zh: '專注 25 分鐘，開始！', en: 'Focus: 25 minutes, go!', ja: '集中 25 分、スタート！' },
+  pomoStop: { zh: '專注計時停止', en: 'Focus timer stopped', ja: '集中タイマー停止' },
+  pomoDone: { zh: '時間到！休息一下吧', en: 'Time! Take a break', ja: '時間です！ひと休み' },
+  weekLabel: { zh: '7D重置', en: '7d reset', ja: '7D回復' },
+  weekDay: { zh: '星期', en: 'Weekday', ja: '曜日' },
+  weekDate: { zh: '日期', en: 'Date', ja: '日付' },
+  secSound: { zh: '聲音', en: 'Sound', ja: 'サウンド' },
+  secShow: { zh: '顯示', en: 'Display', ja: '表示' },
+  secGeneral: { zh: '一般', en: 'General', ja: '一般' },
+  compact: { zh: '壓縮', en: 'CTX', ja: '圧縮' },
+  fx: { zh: '顯示效果', en: 'Motion', ja: '表示効果' },
+  fxEco: { zh: '省電', en: 'Eco', ja: '省電力' },
+  fxNormal: { zh: '標準', en: 'Normal', ja: '標準' },
+  fxSmooth: { zh: '流暢', en: 'Smooth', ja: 'なめらか' },
+  on: { zh: '開', en: 'On', ja: 'オン' },
+  off: { zh: '關', en: 'Off', ja: 'オフ' },
+  hidden: { zh: 'Pixmage 休息中，打 /pixmage 叫醒', en: 'Pixmage is resting. Type /pixmage to wake it.', ja: 'Pixmage はお休み中。/pixmage で起こせます' },
+  levelUp: { zh: '升級！Lv {0}', en: 'Level up! Lv {0}', ja: 'レベルアップ！Lv {0}' },
+  scribeOn: { zh: '書記官上工', en: 'The scribe takes notes', ja: '書記が記録します' },
+  scribeOff: { zh: '換回工作紀錄', en: 'Back to the work log', ja: '作業記録に戻します' },
+  musicOn: { zh: '背景音樂：開', en: 'Music on', ja: 'BGM オン' },
+  musicOff: { zh: '背景音樂：關', en: 'Music off', ja: 'BGM オフ' },
+  soundOn: { zh: '音效：開', en: 'Sound on', ja: 'SE オン' },
+  soundOff: { zh: '音效：關', en: 'Sound off', ja: 'SE オフ' },
+  langSet: { zh: '語言：中文', en: 'Language: English', ja: '言語：日本語' },
+} as const satisfies Record<string, Record<Lang, string>>
+
+export type Words = keyof typeof S
+
+// The text for `key`, `{0}`, `{1}`... filled from `args`.
+export function t(lang: Lang, key: Words, ...args: (string | number)[]) {
+  return S[key][lang].replace(/\{(\d)\}/g, (_, i: string) => String(args[Number(i)] ?? ''))
+}
+
+export const nextLang = (lang: Lang): Lang => LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length]!

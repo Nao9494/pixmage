@@ -1,0 +1,20 @@
+{
+  "name": "pixmage",
+  "version": "0.1.0",
+  "description": "Pixmage（像素法師）: a pixel wizard above the Claude Code prompt. Clawd casts a spell at a monster for every tool call, with a black cat for subagents. Fan-made, unofficial.",
+  "userConfig": {
+    "infoRow": {
+      "type": "string",
+      "title": "Desktop 下方資訊列",
+      "description": "auto：顯示 Claude 的待辦事項（有 work-log 的電腦改顯示工作紀錄）；todo：Claude 的待辦事項；scribe：書記官，每回合結束用 Haiku 濃縮一句目前進度；work-log：工作紀錄（需要另外裝 work-log）",
+      "default": "auto",
+      "options": [
+        "auto",
+        "todo",
+        "scribe",
+        "work-log"
+      ]
+    }
+  },
+  "license": "MIT"
+}

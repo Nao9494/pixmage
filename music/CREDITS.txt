@@ -1,0 +1,15 @@
+All six tracks are by Holizna, released under CC0 1.0 (public domain):
+https://creativecommons.org/publicdomain/zero/1.0/
+No attribution is required; we credit the artist anyway. You can support them at https://www.buymeacoffee.com/holizna
+
+- First Snow, Laundry On The Wire
+  "Lo-Fi and Chill (Collection)", https://opengameart.org/content/lo-fi-and-chill-collection
+- Glad To Be Stuck Inside
+  "Lo-Fi and Chill (Collection)" part 2, same page
+- Waiting Around, Into The Mist
+  "Public Domain Lofi", https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/
+- Fire Place
+  "Winter Lofi", https://freemusicarchive.org/music/holiznacc0/winter-lofi/
+
+The files are the artist's own MP3s, renamed only. To use your own music, put MP3 files in this
+folder (and, if you like, short names for them in titles.json).

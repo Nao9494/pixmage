@@ -1,0 +1,5 @@
+Synthesized for Pixmage: spawn, levelup, refused, done, pomodoro (sounds/make.py), spell_holy, spell_star, frost_hit, fall_slime, fall_bat, fall_ghost.
+From "The Essential Retro Video Game Sound Effects Collection [512 sounds]" by Juhani Junkala (SubspaceAudio), CC0,
+opengameart.org/content/512-sound-effects-8-bit-style, trimmed, faded and levelled: spell_fire, spell_zap, spell_frost, star_hit,
+fall_mushroom, fall_boss_a, fall_boss_b.
+Music: see ../music/CREDITS.txt.
