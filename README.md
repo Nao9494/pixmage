@@ -14,6 +14,10 @@ A little pixel world above the Claude Code prompt. Every tool call brings a mons
 
 Made for the Code tab of the Claude desktop app.
 
+音效和背景音樂只在 **Mac** 上有聲音：Claude Code 在 Windows 和 Linux 上沒有播放器，畫面和其他功能照常。
+
+Sound and music play on **macOS** only; Claude Code has no audio player on Windows or Linux. Everything else works there.
+
 ```bash
 git clone https://github.com/Nao9494/pixmage ~/.claude/skills/pixmage
 ```
