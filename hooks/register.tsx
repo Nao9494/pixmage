@@ -102,10 +102,26 @@ async function refreshBudget($: EngineInterface, save: Save, info: Info, seen: S
   await $.store.set('usage:budget', { at: seen.budgetAt, value: b } satisfies Stamped<Budget>)
 }
 
+// A debug log (/pixmage debug on): clicks, how long they and the frames took, and failures, kept in memory and
+// written to debug.log in the mod's folder every few seconds, to find what goes wrong on another machine.
+let debugOn = false, debugDirty = false
+const debugLines: string[] = []
+function dlog(line: string) {
+  if (!debugOn) return
+  debugLines.push(`${new Date().toISOString().slice(11, 23)} ${line}`)
+  if (debugLines.length > 400) debugLines.splice(0, debugLines.length - 400)
+  debugDirty = true
+}
+async function flushDebug($: EngineInterface) {
+  if (!debugOn || !debugDirty) return
+  debugDirty = false
+  await $.fs.write(`${$.plugin.root}/debug.log`, `${debugLines.join('\n')}\n`).catch(() => $.store.set('debug:log', debugLines.slice(-150))) // no write there: the store keeps the last lines
+}
+
 // A setting a click changed, written without waiting: the picture answers the click at once, even where the
 // store is slow to write (a Windows file another session has open).
 function keep($: EngineInterface, key: string, value: unknown) {
-  void $.store.set(key, value).catch(() => {})
+  void $.store.set(key, value).catch(err => dlog(`store.set ${key} failed: ${String(err)}`))
 }
 
 // /pixmage off and the hide button: kept under this session's id, so reopening the chat keeps it off.
@@ -377,6 +393,7 @@ export const register: Register = (on, options) => {
       if (sfxVol !== undefined && !(held === 'sfxVol' && Date.now() - draggedAt < 2000)) volume.sfx = sfxVol
     }
     await readSettings()
+    debugOn = (await $.store.get('debug')) === true
     readPomo = async () => { const v = await $.store.get('pomo'); pomoUntil = typeof v === 'number' && v > Date.now() ? v : undefined }
     await readPomo()
     music.on = (await $.store.get('music')) !== false
@@ -476,7 +493,7 @@ export const register: Register = (on, options) => {
     budgetTimer?.cancel()
     syncTimer?.cancel()
     // Every few seconds: the other sessions' kills and readings, and the focus timer one of them may have started or stopped.
-    syncTimer = $.clock.every(SYNC_EVERY, () => { void sync($, game.save, info, seen); void readPomo(); void readSettings(); void tendMusic() })
+    syncTimer = $.clock.every(SYNC_EVERY, () => { void sync($, game.save, info, seen); void readPomo(); void readSettings(); void tendMusic(); void flushDebug($) })
     budgetTimer = $.clock.every(BUDGET_EVERY, () => {
       void refreshBudget($, game.save, info, seen)
       if (rowMode === 'work-log') void readWorkLog($).then(w => { info.workLog = w })
@@ -676,89 +693,98 @@ export const register: Register = (on, options) => {
 
   // A click on the pad: a key along the top row, else (the settings page open) a card, else the status bar's reset time.
   on('ui.message', async ($, e) => {
-    const d = e.data as { x: number; y: number; cols: number; rows: number; drag?: true } | { bottom: number }
-    if ('bottom' in d) { padBottom = Math.max(padBottom, d.bottom); return {} } // the lowest the pointer hovered (reset with the size)
-    const f = d.x / d.cols
-    const tall = padBottom > guessRows * 0.75 ? padBottom : guessRows // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
-    const y = (d.y / tall) * textRows * 2 * TEXT_PX // how far down the picture, in the text layer's pixels
-    const row = Math.floor(y / (2 * TEXT_PX)) // which text row of the picture
-    // A drag keeps to the slider it started on, even off its bar.
-    const what = d.drag ? held : (y < 28 ? keyAt.find(k => f >= k.from - 0.005 && f <= k.to + 0.005)?.id : undefined)
-      ?? (scroll.target === 1 ? cardAt(cardSpans, f, y) : undefined)
-      ?? (scroll.target !== 1 && row >= textRows - 2 ? statusAt.find(s => f >= s.from - 0.01 && f <= s.to + 0.01)?.id : undefined) // the status bar's reset time
-      ?? (scroll.target !== 1 && row >= 2 && row < textRows - 3 ? pokeAt(cols, f) : undefined) // Clawd or the cat, for a little reaction
+    const started = Date.now()
+    try {
+      const d = e.data as { x: number; y: number; cols: number; rows: number; drag?: true } | { bottom: number }
+      if ('bottom' in d) { padBottom = Math.max(padBottom, d.bottom); return {} } // the lowest the pointer hovered (reset with the size)
+      const f = d.x / d.cols
+      const tall = padBottom > guessRows * 0.75 ? padBottom : guessRows // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
+      const y = (d.y / tall) * textRows * 2 * TEXT_PX // how far down the picture, in the text layer's pixels
+      const row = Math.floor(y / (2 * TEXT_PX)) // which text row of the picture
+      // A drag keeps to the slider it started on, even off its bar.
+      const what = d.drag ? held : (y < 28 ? keyAt.find(k => f >= k.from - 0.005 && f <= k.to + 0.005)?.id : undefined)
+        ?? (scroll.target === 1 ? cardAt(cardSpans, f, y) : undefined)
+        ?? (scroll.target !== 1 && row >= textRows - 2 ? statusAt.find(s => f >= s.from - 0.01 && f <= s.to + 0.01)?.id : undefined) // the status bar's reset time
+        ?? (scroll.target !== 1 && row >= 2 && row < textRows - 3 ? pokeAt(cols, f) : undefined) // Clawd or the cat, for a little reaction
+        dlog(`click ${what ?? '-'} f=${f.toFixed(3)} y=${y.toFixed(0)} row=${row}${d.drag ? ' drag' : ''} tall=${tall.toFixed(2)}/${guessRows.toFixed(2)} pad=${d.rows}`)
     if (!d.drag) held = what
-    else draggedAt = Date.now()
-    if (!what || (d.drag && what !== 'compact' && what !== 'musicVol' && what !== 'sfxVol')) return {} // a drag only moves a slider
-    lastActive = Date.now() // a press wakes the picture, which may have stopped while idle
-    if (what === 'gear') { scroll.target = scroll.target === 1 ? 0 : 1; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) }
-    if (what === 'hide' && scroll.target === 1) { scroll.target = 0; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) } // on the settings page the cross closes the page
-    else if (what === 'hide') { hidden = true; scroll.target = scroll.p = 0; await storeHidden($, true); $.ui.toast(t(lang, 'hidden')) }
-    if (what === 'sound') { soundOn = !soundOn; keep($, 'sound', soundOn); say(t(lang, soundOn ? 'soundOn' : 'soundOff')) }
-    if (what === 'music') { music.on = !music.on; music.failed = false; await $.store.set('music', music.on); void tendMusic(); say(t(lang, music.on ? 'musicOn' : 'musicOff')) }
-    if (what === 'track') { // the next track, by name, played at once so it can be heard
-      const list = await musicTracks($)
-      if (list.length) {
-        const next = list[(list.indexOf(music.track ?? '') + 1) % list.length]!
-        music.track = next
-        await $.store.set('music:track', next)
-        const now = Date.now()
-        seenPick = now
-        await $.store.set('music:pick', now)
-        if (music.on && music.stop) void playMusic($, music) // ours: straight away; another's picks it up within its sync
-        else if (music.on) void tendMusic()
-        say(`${ICON.note} ${trackTitle(next)}`)
+      else draggedAt = Date.now()
+      if (!what || (d.drag && what !== 'compact' && what !== 'musicVol' && what !== 'sfxVol')) return {} // a drag only moves a slider
+      lastActive = Date.now() // a press wakes the picture, which may have stopped while idle
+      if (what === 'gear') { scroll.target = scroll.target === 1 ? 0 : 1; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) }
+      if (what === 'hide' && scroll.target === 1) { scroll.target = 0; rolling = rollScroll($, scroll, rolling, () => { lastActive = Date.now(); if (!hidden && onDesktop) $.ui.invalidate('ui.render') }) } // on the settings page the cross closes the page
+      else if (what === 'hide') { hidden = true; scroll.target = scroll.p = 0; await storeHidden($, true); $.ui.toast(t(lang, 'hidden')) }
+      if (what === 'sound') { soundOn = !soundOn; keep($, 'sound', soundOn); say(t(lang, soundOn ? 'soundOn' : 'soundOff')) }
+      if (what === 'music') { music.on = !music.on; music.failed = false; await $.store.set('music', music.on); void tendMusic(); say(t(lang, music.on ? 'musicOn' : 'musicOff')) }
+      if (what === 'track') { // the next track, by name, played at once so it can be heard
+        const list = await musicTracks($)
+        if (list.length) {
+          const next = list[(list.indexOf(music.track ?? '') + 1) % list.length]!
+          music.track = next
+          await $.store.set('music:track', next)
+          const now = Date.now()
+          seenPick = now
+          await $.store.set('music:pick', now)
+          if (music.on && music.stop) void playMusic($, music) // ours: straight away; another's picks it up within its sync
+          else if (music.on) void tendMusic()
+          say(`${ICON.note} ${trackTitle(next)}`)
+        }
       }
+      if (what === 'shuffle') { music.shuffle = !music.shuffle; keep($, 'music:shuffle', music.shuffle); say(`${t(lang, 'playMode')}：${t(lang, music.shuffle ? 'shuffle' : 'repeat')}`) }
+      if (what === 'clock') {
+        info.clock = info.clock?.countdown ? {} : info.clock?.h12 ? { countdown: true } : { h12: true } // 24 → 12 → time left → 24
+        keep($, 'clock', info.clock)
+        say(`${t(lang, 'clockLabel')}：${t(lang, info.clock.countdown ? 'clockLeft' : info.clock.h12 ? 'clock12' : 'clock24')}`)
+      }
+      if (what === 'money') { info.money = !info.money; keep($, 'money', info.money) } // MON: the share, or the money
+      if (what === 'pomo') { // the hourglass: start 25 minutes, or (running) stop
+        pomoUntil = pomoUntil === undefined ? Date.now() + POMO_MS : undefined
+        keep($, 'pomo', pomoUntil ?? null)
+        say(t(lang, pomoUntil ? 'pomoStart' : 'pomoStop'))
+      }
+      if (what === 'week') { // the 7-day reset, on its own: weekday → date → time left → weekday
+        info.week = info.week?.countdown ? {} : info.week?.date ? { countdown: true } : { date: true }
+        keep($, 'week', info.week)
+        say(`${t(lang, 'weekLabel')}：${t(lang, info.week.countdown ? 'clockLeft' : info.week.date ? 'weekDate' : 'weekDay')}`)
+      }
+      if (what === 'compact') { // along the slider: the step there; elsewhere on the bar: the next step
+        const at = sliderAt(cardSpans, 'compact', f)
+        const next = at !== undefined ? COMPACT_STEPS[Math.round(at * (COMPACT_STEPS.length - 1))]! : d.drag ? compactAt : COMPACT_STEPS[(COMPACT_STEPS.indexOf(compactAt) + 1) % COMPACT_STEPS.length]!
+        if (next === compactAt) return {}
+        compactAt = next
+        void $.store.set('compact', compactAt) // not awaited: a drag redraws at once
+        say(`${t(lang, 'compact')}：${compactAt ? `${compactAt}%` : t(lang, 'off')}`)
+      }
+      if (what === 'clawd' || what === 'cat' || what === 'castle') game.poke(what)
+      if (what === 'fx') { fx = FXS[(FXS.indexOf(fx) + 1) % FXS.length]!; void $.store.set('fx', fx); say(`${t(lang, 'fx')}：${t(lang, FX_WORD[fx])}`) }
+      if (what === 'musicVol' || what === 'sfxVol') { // along the slider: the step there; elsewhere on the bar: the next step
+        const key = what === 'musicVol' ? 'music' : 'sfx'
+        const at = sliderAt(cardSpans, what, f), now = volumeStep(volume[key])
+        const step = at !== undefined ? Math.round(at * (VOLUMES.length - 1)) : d.drag ? now : (now + 1) % VOLUMES.length
+        if (step === now) return {}
+        volume[key] = VOLUMES[step]!
+        void $.store.set(`volume:${key}`, volume[key]) // not awaited: a drag redraws at once
+        if (key === 'sfx') sfx($, soundOn, 'spawn') // a sound at the new loudness (at most every half second, dragged)
+        else { const n = ++retuning; void $.clock.sleep(300).then(() => { if (n === retuning) retune($, music) }) } // the music, once the slider rests
+        say(`${t(lang, key === 'music' ? 'music' : 'sound')}：${Math.round(volume[key] * 100)}%`)
+      }
+      if (what === 'lang') { lang = nextLang(lang); uiLang = lang; keep($, 'lang', lang); say(t(lang, 'langSet')) }
+      if (what === 'row') {
+        const modes: RowMode[] = workLogHere ? ['todo', 'scribe', 'work-log'] : ['todo', 'scribe']
+        rowMode = modes[(modes.indexOf(rowMode) + 1) % modes.length]!
+        await storeRow($, rowMode)
+        await loadRow($, info, rowMode, tasks)
+        say(t(lang, rowMode === 'scribe' ? 'scribeOn' : rowMode === 'todo' ? 'todoOn' : 'scribeOff'))
+        if (info.scribe && answer) void writeScribe($, info, prompt, answer, lang).then(fresh => { if (fresh) { flash('bulb', 2500); $.ui.invalidate('ui.render') } })
+      }
+      $.ui.invalidate('ui.render')
+      return {}
+    } catch (err) {
+      dlog(`click failed: ${String(err)}`) // a click that throws must not stop the next ones
+      return {}
+    } finally {
+      if (Date.now() - started > 50) dlog(`click took ${Date.now() - started} ms`)
     }
-    if (what === 'shuffle') { music.shuffle = !music.shuffle; keep($, 'music:shuffle', music.shuffle); say(`${t(lang, 'playMode')}：${t(lang, music.shuffle ? 'shuffle' : 'repeat')}`) }
-    if (what === 'clock') {
-      info.clock = info.clock?.countdown ? {} : info.clock?.h12 ? { countdown: true } : { h12: true } // 24 → 12 → time left → 24
-      keep($, 'clock', info.clock)
-      say(`${t(lang, 'clockLabel')}：${t(lang, info.clock.countdown ? 'clockLeft' : info.clock.h12 ? 'clock12' : 'clock24')}`)
-    }
-    if (what === 'money') { info.money = !info.money; keep($, 'money', info.money) } // MON: the share, or the money
-    if (what === 'pomo') { // the hourglass: start 25 minutes, or (running) stop
-      pomoUntil = pomoUntil === undefined ? Date.now() + POMO_MS : undefined
-      keep($, 'pomo', pomoUntil ?? null)
-      say(t(lang, pomoUntil ? 'pomoStart' : 'pomoStop'))
-    }
-    if (what === 'week') { // the 7-day reset, on its own: weekday → date → time left → weekday
-      info.week = info.week?.countdown ? {} : info.week?.date ? { countdown: true } : { date: true }
-      keep($, 'week', info.week)
-      say(`${t(lang, 'weekLabel')}：${t(lang, info.week.countdown ? 'clockLeft' : info.week.date ? 'weekDate' : 'weekDay')}`)
-    }
-    if (what === 'compact') { // along the slider: the step there; elsewhere on the bar: the next step
-      const at = sliderAt(cardSpans, 'compact', f)
-      const next = at !== undefined ? COMPACT_STEPS[Math.round(at * (COMPACT_STEPS.length - 1))]! : d.drag ? compactAt : COMPACT_STEPS[(COMPACT_STEPS.indexOf(compactAt) + 1) % COMPACT_STEPS.length]!
-      if (next === compactAt) return {}
-      compactAt = next
-      void $.store.set('compact', compactAt) // not awaited: a drag redraws at once
-      say(`${t(lang, 'compact')}：${compactAt ? `${compactAt}%` : t(lang, 'off')}`)
-    }
-    if (what === 'clawd' || what === 'cat' || what === 'castle') game.poke(what)
-    if (what === 'fx') { fx = FXS[(FXS.indexOf(fx) + 1) % FXS.length]!; void $.store.set('fx', fx); say(`${t(lang, 'fx')}：${t(lang, FX_WORD[fx])}`) }
-    if (what === 'musicVol' || what === 'sfxVol') { // along the slider: the step there; elsewhere on the bar: the next step
-      const key = what === 'musicVol' ? 'music' : 'sfx'
-      const at = sliderAt(cardSpans, what, f), now = volumeStep(volume[key])
-      const step = at !== undefined ? Math.round(at * (VOLUMES.length - 1)) : d.drag ? now : (now + 1) % VOLUMES.length
-      if (step === now) return {}
-      volume[key] = VOLUMES[step]!
-      void $.store.set(`volume:${key}`, volume[key]) // not awaited: a drag redraws at once
-      if (key === 'sfx') sfx($, soundOn, 'spawn') // a sound at the new loudness (at most every half second, dragged)
-      else { const n = ++retuning; void $.clock.sleep(300).then(() => { if (n === retuning) retune($, music) }) } // the music, once the slider rests
-      say(`${t(lang, key === 'music' ? 'music' : 'sound')}：${Math.round(volume[key] * 100)}%`)
-    }
-    if (what === 'lang') { lang = nextLang(lang); uiLang = lang; keep($, 'lang', lang); say(t(lang, 'langSet')) }
-    if (what === 'row') {
-      const modes: RowMode[] = workLogHere ? ['todo', 'scribe', 'work-log'] : ['todo', 'scribe']
-      rowMode = modes[(modes.indexOf(rowMode) + 1) % modes.length]!
-      await storeRow($, rowMode)
-      await loadRow($, info, rowMode, tasks)
-      say(t(lang, rowMode === 'scribe' ? 'scribeOn' : rowMode === 'todo' ? 'todoOn' : 'scribeOff'))
-      if (info.scribe && answer) void writeScribe($, info, prompt, answer, lang).then(fresh => { if (fresh) { flash('bulb', 2500); $.ui.invalidate('ui.render') } })
-    }
-    $.ui.invalidate('ui.render')
-    return {}
   })
 
   // /pixmage shows the band, /pixmage off hides it: no toggle to land on the wrong side of.
@@ -770,6 +796,13 @@ export const register: Register = (on, options) => {
       await $.store.set('clock', info.clock)
       $.ui.invalidate('ui.render')
       return { text: t(lang, want === '12' ? 'cmdClock12' : want === 'left' ? 'cmdClockLeft' : 'cmdClock24') }
+    }
+    const dbg = /^debug\s*(on|off)?$/i.exec(e.args.trim())
+    if (dbg) {
+      debugOn = dbg[1] ? dbg[1].toLowerCase() === 'on' : !debugOn
+      await $.store.set('debug', debugOn)
+      if (debugOn) { dlog(`debug on: cols=${cols} textRows=${textRows} guessRows=${guessRows.toFixed(2)} padBottom=${padBottom}`); await flushDebug($) }
+      return { text: debugOn ? `Debug log on: ${$.plugin.root}/debug.log (refreshed every 5 s). /pixmage debug off stops it.` : 'Debug log off.' }
     }
     const compact = /^compact\s*(on|off)?$/i.exec(e.args.trim())
     if (compact) {
@@ -802,6 +835,7 @@ export const register: Register = (on, options) => {
 
 
     if (e.surface === 'desktop') {
+      const renderStart = Date.now()
       const { Box, Client, Svg } = $.ui.resolve(e)
       // Wider than the slot on purpose: the Svg shrinks to the slot's width, so it always fills it.
       cols = Math.min(Math.max(e.props.bodyColumns, DESKTOP_COLS), 100)
@@ -842,10 +876,11 @@ export const register: Register = (on, options) => {
       // The click pad covers the picture. Its height in rows is a guess at first (a row about 2.4 columns tall),
       // and the lowest row the pointer is seen on corrects it (padBottom); the pad itself is made taller and clipped.
       const size = `${e.props.bodyColumns}x${cols}x${scene.px.length}`
-      if (size !== padSize) { padSize = size; padBottom = -1 } // a new size: the bottom seen before no longer holds
+      if (size !== padSize) { dlog(`resize ${padSize} -> ${size}`); padSize = size; padBottom = -1 } // a new size: the bottom seen before no longer holds
       textRows = scene.px.length / (cols * fine * fine) / 2
       guessRows = (e.props.bodyColumns * textRows * 2) / cols / 2.4
       const padRows = Math.ceil(guessRows * 1.3) + 1
+      if (Date.now() - renderStart > 40) dlog(`frame took ${Date.now() - renderStart} ms${scroll.p > 0 ? ' (settings)' : ''}`)
       if (!musicKicked) { musicKicked = true; void tendMusic(); void $.session.id().then(id => $.store.set('focus:last', id)).catch(() => {}) } // the first session drawn plays, unless another already does; the one drawn last rings the chime
       return (
         // overflow hidden: the pad runs taller than the picture, and must not make the band scroll

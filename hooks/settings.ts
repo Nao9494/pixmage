@@ -34,6 +34,7 @@ const PAPER = 0xebdcbc, STAIN = 0xdccaa0, WORN = 0xcdb488, BURNT = 0xa07a4c, SHA
 const ROD = [0x3a2414, 0x8e5e34, 0xd8ac78, 0xb07c4a, 0x5a3820] // five squares, lit from the left
 const CAP = { dark: 0x7a5420, body: 0xc89a4a, light: 0xf0d48e }
 const textWidth = (s: string) => [...s].reduce((n, ch) => n + (wide(ch) ? 2 : 1), 0)
+const PAPERS = new Map<string, Int32Array>() // drawn pages, by size and unrolling
 const hash = (n: number) => (((n * 2654435761) >>> 0) % 1000) / 1000 // a steady pseudo-random 0..1
 
 // A torn edge: for each square column, how many squares are bitten off. Bites come in runs of a few columns at
@@ -67,41 +68,50 @@ export function withScroll(scene: Scene, p: number, title: string, cards: readon
   const right = GW - R - 1 // the right rod's first square, fixed near the picture's edge
   const x0 = Math.min(right - 2, Math.round((GW - R) * (1 - Math.min(p, 1))) + R + 1) // the paper's first square
 
-  // The paper: flat, a few old stains, torn top and bottom, the torn edge burnt dark and worn paler inside it.
-  const topBite = tear(GW, 11, 2).map((d, X) => (Math.abs(X - GW / 2) < GW / 5 ? Math.min(d, 1) : d))
-  const footBite = tear(GW, 53, 3) // the top's bites stay shallow above the title
-  const stains = [[0.22, 0.62, 9], [0.55, 0.3, 7], [0.8, 0.7, 10]] as const
-  for (let X = x0; X < right; X++) {
-    const top = topBite[X]!, foot = GH - 1 - footBite[X]!
-    for (let Y = top; Y <= foot; Y++) {
-      const stain = stains.some(([fx, fy, r]) => Math.hypot(X - fx * GW, (Y - fy * GH) * 1.6) < r)
-      sq(X, Y, stain ? STAIN : PAPER)
+  // The paper and its rods depend only on the size and how far it is unrolled: drawn once for each, then reused
+  // (redrawing every stain and burnt edge each frame made the open page several times dearer than the picture).
+  const key = `${W}x${H}:${x0}`
+  const kept = PAPERS.get(key)
+  if (kept) px.set(kept)
+  else {
+    // The paper: flat, a few old stains, torn top and bottom, the torn edge burnt dark and worn paler inside it.
+    const topBite = tear(GW, 11, 2).map((d, X) => (Math.abs(X - GW / 2) < GW / 5 ? Math.min(d, 1) : d))
+    const footBite = tear(GW, 53, 3) // the top's bites stay shallow above the title
+    const stains = [[0.22, 0.62, 9], [0.55, 0.3, 7], [0.8, 0.7, 10]] as const
+    for (let X = x0; X < right; X++) {
+      const top = topBite[X]!, foot = GH - 1 - footBite[X]!
+      for (let Y = top; Y <= foot; Y++) {
+        const stain = stains.some(([fx, fy, r]) => Math.hypot(X - fx * GW, (Y - fy * GH) * 1.6) < r)
+        sq(X, Y, stain ? STAIN : PAPER)
+      }
     }
-  }
-  // Burn the edges: a paper square next to a missing one turns dark; the next ring in, worn.
-  const paper = (x: number, y: number) => x >= x0 && x < right && at(x, y) !== CLEAR
-  const near = (x: number, y: number, t: (x: number, y: number) => boolean) => t(x - 1, y) || t(x + 1, y) || t(x, y - 1) || t(x, y + 1)
-  const burnt: [number, number][] = [], worn: [number, number][] = []
-  for (let Y = 0; Y < GH; Y++) for (let X = x0 + 1; X < right - 1; X++) {
-    if (paper(X, Y) && near(X, Y, (a, b) => !paper(a, b))) burnt.push([X, Y])
-  }
-  for (const [X, Y] of burnt) sq(X, Y, BURNT)
-  for (let Y = 0; Y < GH; Y++) for (let X = x0; X < right; X++) {
-    if (paper(X, Y) && at(X, Y) !== BURNT && near(X, Y, (a, b) => at(a, b) === BURNT)) worn.push([X, Y])
-  }
-  for (const [X, Y] of worn) sq(X, Y, WORN)
-  // The rods: the moving one just left of the paper, the fixed one at the right; a shade on the paper beside each.
-  const rod = (rx: number) => {
-    ROD.forEach((c, i) => box(rx + i, 1, 1, GH - 2, c))
-    for (const Y of [0, GH - 3]) {
-      box(rx - 1, Y, R + 2, 3, CAP.dark)
-      box(rx, Y, R, 2, CAP.body)
-      box(rx, Y, 2, 1, CAP.light)
+    // Burn the edges: a paper square next to a missing one turns dark; the next ring in, worn.
+    const paper = (x: number, y: number) => x >= x0 && x < right && at(x, y) !== CLEAR
+    const near = (x: number, y: number, t: (x: number, y: number) => boolean) => t(x - 1, y) || t(x + 1, y) || t(x, y - 1) || t(x, y + 1)
+    const burnt: [number, number][] = [], worn: [number, number][] = []
+    for (let Y = 0; Y < GH; Y++) for (let X = x0 + 1; X < right - 1; X++) {
+      if (paper(X, Y) && near(X, Y, (a, b) => !paper(a, b))) burnt.push([X, Y])
     }
+    for (const [X, Y] of burnt) sq(X, Y, BURNT)
+    for (let Y = 0; Y < GH; Y++) for (let X = x0; X < right; X++) {
+      if (paper(X, Y) && at(X, Y) !== BURNT && near(X, Y, (a, b) => at(a, b) === BURNT)) worn.push([X, Y])
+    }
+    for (const [X, Y] of worn) sq(X, Y, WORN)
+    // The rods: the moving one just left of the paper, the fixed one at the right; a shade on the paper beside each.
+    const rod = (rx: number) => {
+      ROD.forEach((c, i) => box(rx + i, 1, 1, GH - 2, c))
+      for (const Y of [0, GH - 3]) {
+        box(rx - 1, Y, R + 2, 3, CAP.dark)
+        box(rx, Y, R, 2, CAP.body)
+        box(rx, Y, 2, 1, CAP.light)
+      }
+    }
+    for (let Y = 2; Y < GH - 2; Y++) { if (at(x0, Y) === PAPER) sq(x0, Y, SHADE); if (at(right - 1, Y) === PAPER) sq(right - 1, Y, SHADE) }
+    rod(x0 - R)
+    rod(right)
+    PAPERS.set(key, px.slice())
+    if (PAPERS.size > 24) PAPERS.delete(PAPERS.keys().next().value!)
   }
-  for (let Y = 2; Y < GH - 2; Y++) { if (at(x0, Y) === PAPER) sq(x0, Y, SHADE); if (at(right - 1, Y) === PAPER) sq(right - 1, Y, SHADE) }
-  rod(x0 - R)
-  rod(right)
 
   const labels: Label[] = [...scene.labels]
   const spans: Span[] = []
