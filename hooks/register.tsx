@@ -174,8 +174,10 @@ const lastSound = new Map<string, number>()
 export const VOLUMES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] // the settings page's volume slider: silent to full (100%, the default)
 const volumeStep = (v: number) => VOLUMES.reduce((best, x, i) => (Math.abs(x - v) < Math.abs(VOLUMES[best]! - v) ? i : best), 0) // the nearest step (older saves held 0.5, 1, 1.6)
 const volume = { music: 1, sfx: 1 } // the ones picked: the music's, the sound effects'
+// No sound where Claude Code has no player (Windows, Linux): the sound settings are greyed out there, nothing plays.
+let soundless = false
 function sfx($: EngineInterface, on: boolean, name: Sfx) {
-  if (!on || !gate(lastSound, name, Date.now())) return
+  if (soundless || !on || !gate(lastSound, name, Date.now())) return
   void $.audio.play({ asset: `sounds/${name}.wav` }, { gain: GAIN[name] * volume.sfx }).catch(() => {})
 }
 
@@ -232,7 +234,7 @@ async function playMusic($: EngineInterface, m: Music, change = false, from?: nu
   m.stop?.abort()
   m.stop = undefined
   m.pos = undefined
-  if (!m.on || m.away || m.failed) return
+  if (soundless || !m.on || m.away || m.failed) return
   const tracks = await musicTracks($)
   const track = !change && m.track && tracks.includes(m.track) ? m.track : nextTrack(tracks, m.track)
   if (!track) { m.failed = true; $.ui.toast(t(uiLang, 'noMusic')); return } // said once: no retrying until the music is switched again
@@ -421,7 +423,10 @@ export const register: Register = (on, options) => {
     const old = Math.min(1, ((await $.store.get('volume')) as number | undefined) ?? 1) // one volume for both, before they split (older saves went up to 1.6)
     volume.music = ((await getKept($, 'volume:music')) as number | undefined) ?? old
     volume.sfx = ((await getKept($, 'volume:sfx')) as number | undefined) ?? old
+    // macOS plays sound (afplay); Windows and Linux have no player in Claude Code.
+    soundless = (await $.env.get('OS')) === 'Windows_NT' || !((await $.env.get('HOME')) ?? '').startsWith('/Users/')
     tendMusic = async () => {
+      if (soundless) return // never claims the music, never writes its keys
       const sid = await $.session.id()
       // The settings, as any session last set them: the player picks them up here (volume and mode from its next track).
       const [wanted, shuffle, vol, owner, track, pick] = await Promise.all([getKept($, 'music'), getKept($, 'music:shuffle'), getKept($, 'volume:music'), $.store.get('music:owner'), getKept($, 'music:track'), getKept($, 'music:pick')]) as [unknown, unknown, number | undefined, Owner | null | undefined, string | undefined, number | undefined]
@@ -727,6 +732,7 @@ export const register: Register = (on, options) => {
         ?? (scroll.target !== 1 && row >= textRows - 2 ? statusAt.find(s => f >= s.from - 0.01 && f <= s.to + 0.01)?.id : undefined) // the status bar's reset time
         ?? (scroll.target !== 1 && row >= 2 && row < textRows - 3 ? pokeAt(cols, f) : undefined) // Clawd or the cat, for a little reaction
         dlog(`click ${what ?? '-'} f=${f.toFixed(3)} y=${y.toFixed(0)} row=${row}${d.drag ? ' drag' : ''} tall=${tall.toFixed(2)}/${guessRows.toFixed(2)} pad=${d.rows}`)
+      if (soundless && ['music', 'sound', 'musicVol', 'sfxVol', 'track', 'shuffle'].includes(what ?? '')) { if (!d.drag) say(t(lang, 'noSound')); return {} } // nothing to set here
     if (!d.drag) held = what
       else draggedAt = Date.now()
       if (!what || (d.drag && what !== 'compact' && what !== 'musicVol' && what !== 'sfxVol')) return {} // a drag only moves a slider
@@ -831,6 +837,7 @@ export const register: Register = (on, options) => {
       return { text: compactAt ? t(lang, 'cmdCompactOn', compactAt) : t(lang, 'cmdCompactOff') }
     }
     const sound = /^sound\s*(on|off)?$/i.exec(e.args.trim())
+    if (sound && soundless) return { text: t(lang, 'noSound') }
     if (sound) {
       soundOn = sound[1] ? sound[1].toLowerCase() === 'on' : !soundOn
       await $.store.set('sound', soundOn)
@@ -872,9 +879,15 @@ export const register: Register = (on, options) => {
       const weekWord = info.week?.countdown ? 'clockLeft' : info.week?.date ? 'weekDate' : 'weekDay'
       const pct = (v: number) => `${Math.round(v * 100)}%`
       const cards: Card[] = [
-        { id: 'musicVol', mute: 'music', muted: !music.on, icon: 'setVolume', label: t(lang, 'music'), value: pct(volume.music), slider: volumeStep(volume.music) / (VOLUMES.length - 1) },
-        { id: 'sfxVol', mute: 'sound', muted: !soundOn, icon: 'setVolume', label: t(lang, 'sound'), value: pct(volume.sfx), slider: volumeStep(volume.sfx) / (VOLUMES.length - 1) },
-        { id: 'track', mute: 'shuffle', muted: false, icon: music.shuffle ? 'setShuffle' : 'setTracks', label: t(lang, 'playMode'), value: clip(trackTitle(music.track), 11) }, // the key: repeat or shuffle; the name: the next track
+        ...(soundless ? [ // no player here: the sound column greyed out, saying so
+          { id: 'musicVol', mute: 'music', muted: true, icon: 'setVolume', label: t(lang, 'music'), value: t(lang, 'unsupported'), slider: 0 },
+          { id: 'sfxVol', mute: 'sound', muted: true, icon: 'setVolume', label: t(lang, 'sound'), value: t(lang, 'unsupported'), slider: 0 },
+          { id: 'track', mute: 'shuffle', muted: true, icon: 'setTracks', label: t(lang, 'playMode'), value: t(lang, 'unsupported') },
+        ] satisfies Card[] : [
+          { id: 'musicVol', mute: 'music', muted: !music.on, icon: 'setVolume', label: t(lang, 'music'), value: pct(volume.music), slider: volumeStep(volume.music) / (VOLUMES.length - 1) },
+          { id: 'sfxVol', mute: 'sound', muted: !soundOn, icon: 'setVolume', label: t(lang, 'sound'), value: pct(volume.sfx), slider: volumeStep(volume.sfx) / (VOLUMES.length - 1) },
+          { id: 'track', mute: 'shuffle', muted: false, icon: music.shuffle ? 'setShuffle' : 'setTracks', label: t(lang, 'playMode'), value: clip(trackTitle(music.track), 11) }, // the key: repeat or shuffle; the name: the next track
+        ] satisfies Card[]),
         { id: 'row', icon: rowMode === 'scribe' ? 'quill' : rowMode === 'todo' ? 'memo' : 'calendar', label: t(lang, 'rowLabel'), value: t(lang, rowMode === 'scribe' ? 'scribe' : rowMode === 'todo' ? 'todo' : 'worklog') },
         { id: 'clock', icon: 'hourglass', label: t(lang, 'clockLabel'), short: '5H', value: t(lang, clockWord), choices: clocks },
         { id: 'week', icon: 'calendar', label: t(lang, 'weekLabel'), short: '7D', value: t(lang, weekWord), choices: weeks },

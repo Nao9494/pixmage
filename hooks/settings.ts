@@ -152,9 +152,8 @@ export function withScroll(scene: Scene, p: number, title: string, cards: readon
         knob(it.on ? edge - 8 : edge - 16, mid, it.on)
       } else if (it.value !== undefined) {
         const vc = end - 2 - textWidth(it.value)
-        putAt(vc, ty, it.value, VALUE)
-        tri(vc * TEXT_PX - 7, mid - 3, -1)
-        tri(edge - 4, mid - 3, 1)
+        putAt(vc, ty, it.value, it.muted ? DIM : VALUE)
+        if (!it.muted) { tri(vc * TEXT_PX - 7, mid - 3, -1); tri(edge - 4, mid - 3, 1) } // greyed out: nothing to cycle
       }
       return undefined
     }
