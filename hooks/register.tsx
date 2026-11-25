@@ -671,7 +671,7 @@ export const register: Register = (on, options) => {
   // A click on the pad: a key along the top row, else (the settings page open) a card, else the status bar's reset time.
   on('ui.message', async ($, e) => {
     const d = e.data as { x: number; y: number; cols: number; rows: number; drag?: true } | { bottom: number }
-    if ('bottom' in d) { padBottom = Math.max(padBottom, d.bottom); return {} } // the pointer left through the picture's bottom (reset with the size)
+    if ('bottom' in d) { padBottom = Math.max(padBottom, d.bottom); return {} } // the lowest the pointer hovered (reset with the size)
     const f = d.x / d.cols
     const tall = padBottom > guessRows * 0.75 ? padBottom : guessRows // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
     const y = (d.y / tall) * textRows * 2 * TEXT_PX // how far down the picture, in the text layer's pixels

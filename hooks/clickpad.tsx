@@ -4,13 +4,16 @@ import type { ClientModule } from 'claude-code'
 const ClickPad: ClientModule<null, true> = (_props, surface) => {
   if (surface.state === undefined) {
     let held = false, sent = -1 // the column a drag last reported
-    let last: { x: number; y: number; dy: number; low: number } | undefined // the pointer's last hover, and which way it went
+    let bottom = -1, size = '' // the lowest the hovering pointer has been, in rows; the pad's size it holds for
     surface.onPointer(e => {
       const at = { x: e.fine?.x ?? e.x + 0.5, y: e.fine?.y ?? e.y + 0.5, cols: surface.columns, rows: surface.rows }
-      // Where the picture ends: the pad is taller and clipped there, so a hovering pointer that leaves going down,
-      // away from the sides, left through the picture's bottom. (A held pointer reports past the edges: not used.)
-      if (e.type === 'move' && !held) last = { x: at.x, y: at.y, dy: last ? at.y - last.y : 0, low: Math.max(last?.low ?? 0, e.fine?.y ?? e.y + 1) }
-      if (e.type === 'leave' && !held && last && last.dy > 0 && last.x > 1 && last.x < surface.columns - 1) surface.post({ bottom: last.low }) // the lowest it hovered (a row's bottom without fine y)
+      // Where the picture ends, learnt as the pointer hovers: the lowest it is seen (the pad is taller, and clipped
+      // there). Never from a held pointer, which reports past the edges.
+      if (`${surface.columns}x${surface.rows}` !== size) { size = `${surface.columns}x${surface.rows}`; bottom = -1 } // resized: learn it again
+      if (e.type === 'move' && !held && e.y < surface.rows) {
+        const low = e.fine?.y ?? e.y + 1 // a row's bottom without fine y
+        if (low > bottom + 0.05) { bottom = low; surface.post({ bottom }) }
+      }
       if (e.type === 'down' && e.button !== undefined && e.button !== 'left') return // a right or middle click does nothing
       if (e.type === 'down') { held = true; sent = at.x; surface.post(at) }
       else if (e.type === 'up') { // the pointer is held till here, wherever it went
