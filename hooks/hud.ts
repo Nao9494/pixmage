@@ -272,7 +272,7 @@ export function statusSegs(info: Info, save: { level: number; xp: number }, need
     if (info.money) mon[2] = { text: fit(b.max ? `${money(b.spend)}/${money(b.max)}` : money(b.spend), 15, true), color: pct === undefined ? C.text : warn(pct), id: 'money' }
     else mon[2] = { ...mon[2]!, id: 'money' }
     out.push(SEP, ...mon)
-    out.push(SEP, { text: `${ICON.coin}TODAY `, color: C.label }, { text: fit(b.today === undefined ? '--' : money(b.today), 8, true), color: b.today === undefined ? C.dim : C.money }) // a fixed width: the bar holds still
+    out.push(SEP, { text: `${ICON.coin}TODAY `, color: C.label, id: 'money' }, { text: fit(b.today === undefined ? '--' : money(b.today), 8, true), color: b.today === undefined ? C.dim : C.money, id: 'money' }) // a fixed width: the bar holds still; a click here too switches MON
   } else {
     // The two windows always hold their places; one not reported yet waits there empty.
     // A window whose reset has passed is empty again, though no reply has said so yet: 0%, its next reset unknown.
