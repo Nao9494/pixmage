@@ -6,7 +6,7 @@ import { ICON, type IconName } from './icons'
 import { type Lang, nextLang, t } from './i18n'
 import { type Card, cardAt, sliderAt, type Span, withScroll } from './settings'
 import { BLOW, CAST, FALL, gate, GAIN, MUSIC_GAIN, nextTrack, type Sfx } from './sound'
-import { infoLines, parseKeyInfo, wrapRows, scribeSystem, scribePrompt, scribeText, statusSegs, POMO_MS, toolIcon, parseToday, ymd, type Budget, type Info, type Limit, type Todo, type WorkLog } from './hud'
+import { infoLines, parseKeyInfo, wrapRows, scribeSystem, scribePrompt, scribeText, statusSegs, POMO_MS, toolIcon, parseToday, ymd, type Budget, type Info, type MonStyle, type TodayStyle, type Limit, type Todo, type WorkLog } from './hud'
 
 const DESKTOP_COLS = 88 // the picture fills the slot: fewer columns draw it bigger, more leave the HUD room to breathe
 const BUDGET_EVERY = 60_000 // LiteLLM figures also refresh on their own, once a minute
@@ -338,7 +338,7 @@ export const register: Register = (on, options) => {
   let hidden = false
   let keyAt: { id: string; from: number; to: number }[] = [] // each key's span, as a share of the picture's width
   let statusAt: { id: string; from: number; to: number }[] = [] // what in the status bar a click can change
-  let textRows = 12, guessRows = 9, padBottom = -1, padSize = '' // the picture's text rows; its height in the pad's rows, guessed and seen
+  let textRows = 12, guessRows = 9, padBottom = -1, padRow = -1, padSize = '' // the picture's text rows; its height in the pad's rows, guessed and seen
   let cardSpans: Span[] = [] // the settings cards', while the page is open
   let lang: Lang = 'zh' // the picture's and the toasts' words; kept for every session
   const scroll = { p: 0, target: 0 } // the settings scroll: 0 rolled away, 1 over the whole picture
@@ -406,7 +406,10 @@ export const register: Register = (on, options) => {
       uiLang = lang
       info.clock = ((await getKept($, 'clock')) as Info['clock']) ?? {}
       info.week = ((await getKept($, 'week')) as Info['week']) ?? {}
-      info.money = (await getKept($, 'money')) === true
+      const mon = await getKept($, 'money') // true: an older save's spent-of-budget
+      info.money = mon === true ? 'spent' : mon === 'spent' || mon === 'left' ? mon : undefined
+      const today = await getKept($, 'today')
+      info.today = today === 'daily' || today === 'reset' ? today : undefined
       const kept = await getKept($, 'compact') // a percent; true from before the percents meant 80
       if (!(held === 'compact' && Date.now() - draggedAt < 2000)) compactAt = kept === true ? 80 : typeof kept === 'number' ? kept : 0
       fx = ((await getKept($, 'fx')) as Fx | undefined) ?? ((await $.store.get('calm')) === true ? 'eco' : 'normal') // calm was eco, before there were three
@@ -720,10 +723,11 @@ export const register: Register = (on, options) => {
   on('ui.message', async ($, e) => {
     const started = Date.now()
     try {
-      const d = e.data as { x: number; y: number; cols: number; rows: number; drag?: true } | { bottom: number }
-      if ('bottom' in d) { padBottom = Math.max(padBottom, d.bottom); return {} } // the lowest the pointer hovered (reset with the size)
+      const d = e.data as { x: number; y: number; cols: number; rows: number; drag?: true } | { bottom: number; whole?: true }
+      if ('bottom' in d) { if (d.whole) { if (d.bottom > padRow) dlog(`hover row ${d.bottom - 1} size=${padSize} guess=${guessRows.toFixed(2)}`); padRow = Math.max(padRow, d.bottom) } else padBottom = Math.max(padBottom, d.bottom); return {} } // the lowest the pointer hovered (reset with the size)
       const f = d.x / d.cols
-      const tall = padBottom > guessRows * 0.75 ? padBottom : guessRows // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
+      // Seen to a fraction: that. Seen by whole rows: the guess, but never above the lowest row the pointer was in (the picture reaches into it).
+      const tall = padBottom > guessRows * 0.75 ? padBottom : Math.max(guessRows, padRow - 0.95) // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
       const y = (d.y / tall) * textRows * 2 * TEXT_PX // how far down the picture, in the text layer's pixels
       const row = Math.floor(y / (2 * TEXT_PX)) // which text row of the picture
       // A drag keeps to the slider it started on, even off its bar.
@@ -762,7 +766,18 @@ export const register: Register = (on, options) => {
         keep($, 'clock', info.clock)
         say(`${t(lang, 'clockLabel')}：${t(lang, info.clock.countdown ? 'clockLeft' : info.clock.h12 ? 'clock12' : 'clock24')}`)
       }
-      if (what === 'money') { info.money = !info.money; keep($, 'money', info.money) } // MON: the share, or the money
+      if (what === 'money') { // MON: the share → spent of the budget → what is left
+        const ms: (MonStyle | undefined)[] = [undefined, 'spent', 'left']
+        info.money = ms[(ms.indexOf(info.money) + 1) % ms.length]
+        keep($, 'money', info.money ?? null)
+        say(`MON：${t(lang, info.money === 'left' ? 'monLeft' : info.money ? 'monSpent' : 'monPct')}`)
+      }
+      if (what === 'today') { // TODAY: today's spend → each day's share of what is left → the reset day
+        const ts: (TodayStyle | undefined)[] = [undefined, 'daily', 'reset']
+        info.today = ts[(ts.indexOf(info.today) + 1) % ts.length]
+        keep($, 'today', info.today ?? null)
+        say(`TODAY：${t(lang, info.today === 'daily' ? 'todayDaily' : info.today === 'reset' ? 'todayReset' : 'todaySpent')}`)
+      }
       if (what === 'pomo') { // the hourglass: start 25 minutes, or (running) stop
         pomoUntil = pomoUntil === undefined ? Date.now() + POMO_MS : undefined
         keep($, 'pomo', pomoUntil ?? null)
@@ -878,6 +893,8 @@ export const register: Register = (on, options) => {
       const clocks = (['clock24', 'clock12', 'clockLeft'] as const).map(w => t(lang, w)), weeks = (['weekDay', 'weekDate', 'clockLeft'] as const).map(w => t(lang, w))
       const weekWord = info.week?.countdown ? 'clockLeft' : info.week?.date ? 'weekDate' : 'weekDay'
       const pct = (v: number) => `${Math.round(v * 100)}%`
+      const monWord = info.money === 'left' ? 'monLeft' : info.money ? 'monSpent' : 'monPct', mons = (['monPct', 'monSpent', 'monLeft'] as const).map(w => t(lang, w))
+      const todayWord = info.today === 'daily' ? 'todayDaily' : info.today === 'reset' ? 'todayReset' : 'todaySpent', todays = (['todaySpent', 'todayDaily', 'todayReset'] as const).map(w => t(lang, w))
       const cards: Card[] = [
         ...(soundless ? [] : [ // no player here (Windows, Linux): no sound group at all
           { id: 'musicVol', mute: 'music', muted: !music.on, icon: 'setVolume', label: t(lang, 'music'), value: pct(volume.music), slider: volumeStep(volume.music) / (VOLUMES.length - 1) },
@@ -885,8 +902,13 @@ export const register: Register = (on, options) => {
           { id: 'track', mute: 'shuffle', muted: false, icon: music.shuffle ? 'setShuffle' : 'setTracks', label: t(lang, 'playMode'), value: clip(trackTitle(music.track), 11) }, // the key: repeat or shuffle; the name: the next track
         ] satisfies Card[]),
         { id: 'row', icon: rowMode === 'scribe' ? 'quill' : rowMode === 'todo' ? 'memo' : 'calendar', label: t(lang, 'rowLabel'), value: t(lang, rowMode === 'scribe' ? 'scribe' : rowMode === 'todo' ? 'todo' : 'worklog') },
-        { id: 'clock', icon: 'hourglass', label: t(lang, 'clockLabel'), short: '5H', value: t(lang, clockWord), choices: clocks },
-        { id: 'week', icon: 'calendar', label: t(lang, 'weekLabel'), short: '7D', value: t(lang, weekWord), choices: weeks },
+        ...(info.budget ? [ // through a gateway (LiteLLM): no 5H or 7D, but the month's budget and today, in their places
+          { id: 'money', icon: 'coin', label: t(lang, 'monLabel'), value: t(lang, monWord), choices: mons },
+          { id: 'today', icon: 'calendar', label: t(lang, 'todayLabel'), value: t(lang, todayWord), choices: todays },
+        ] satisfies Card[] : [
+          { id: 'clock', icon: 'hourglass', label: t(lang, 'clockLabel'), short: '5H', value: t(lang, clockWord), choices: clocks },
+          { id: 'week', icon: 'calendar', label: t(lang, 'weekLabel'), short: '7D', value: t(lang, weekWord), choices: weeks },
+        ] satisfies Card[]),
         { id: 'compact', icon: 'setCompact', label: t(lang, 'compact'), value: compactAt ? `${compactAt}%` : t(lang, 'off'), slider: Math.max(COMPACT_STEPS.indexOf(compactAt), 0) / (COMPACT_STEPS.length - 1) },
         { id: 'lang', icon: 'setLang', label: t(lang, 'lang'), value: t(lang, 'langName') },
         { id: 'fx', icon: 'setMotion', label: t(lang, 'fx'), value: t(lang, FX_WORD[fx]), choices: FXS.map(x => t(lang, FX_WORD[x])) },
@@ -905,9 +927,9 @@ export const register: Register = (on, options) => {
       // The click pad covers the picture. Its height in rows is a guess at first (a row about 2.4 columns tall),
       // and the lowest row the pointer is seen on corrects it (padBottom); the pad itself is made taller and clipped.
       const size = `${e.props.bodyColumns}x${cols}x${scene.px.length}`
-      if (size !== padSize) { dlog(`resize ${padSize} -> ${size}`); padSize = size; padBottom = -1 } // a new size: the bottom seen before no longer holds
+      if (size !== padSize) { dlog(`resize ${padSize} -> ${size}`); padSize = size; padBottom = padRow = -1 } // a new size: the bottom seen before no longer holds
       textRows = scene.px.length / (cols * fine * fine) / 2
-      guessRows = (e.props.bodyColumns * textRows * 2) / cols / 2.4
+      guessRows = (e.props.bodyColumns * textRows * 2) / cols / (soundless ? 2.45 : 2.19) // a row's height in columns: 2.45 on Windows (measured to a fraction, 2026-11-26); 2.19 in the Mac app, which sends whole rows only (worked back from the clicks logged 2026-11-27: the picture 10.35–11 rows at 85 columns)
       const padRows = Math.ceil(guessRows * 1.3) + 1
       if (Date.now() - renderStart > 40) dlog(`frame took ${Date.now() - renderStart} ms${scroll.p > 0 ? ' (settings)' : ''}`)
       if (!musicKicked) { musicKicked = true; void tendMusic(); void $.session.id().then(id => $.store.set('focus:last', id)).catch(() => {}) } // the first session drawn plays, unless another already does; the one drawn last rings the chime
@@ -918,7 +940,7 @@ export const register: Register = (on, options) => {
           {/* A see-through click pad over the whole picture: it says where a click lands, and the keys and the
               settings cards are found from that (ui.message). */}
           <Box key="pad-wrap" position="absolute" top={0} left={0} width="100%">
-            <Client key="pad" module="./clickpad.tsx" width="100%" height={padRows} />
+            <Client key="pad" module="./clickpad.tsx" props={{ rows: padRows }} width="100%" height={padRows} />
           </Box>
         </Box>
       )

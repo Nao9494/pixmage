@@ -18,11 +18,11 @@ export type Span = { id: string; from: number; to: number; y: [number, number]; 
 // A: three columns of three bars under group headings. B: a sound mixer beside a list of the rest.
 export type Layout = 'A' | 'B'
 export const LAYOUTS: readonly Layout[] = ['A', 'B']
-const ORDER_A = [['musicVol', 'sfxVol', 'track'], ['row', 'clock', 'week'], ['compact', 'lang', 'fx']] as const
+const ORDER_A = [['musicVol', 'sfxVol', 'track'], ['row', 'clock', 'week', 'money', 'today'], ['compact', 'lang', 'fx']] as const
 // side, line, and in B: hung under the line above (`sub`), or half of a split line (`zone`)
 const PLACE_B: Record<string, { side: 0 | 1; line: number; sub?: true; zone?: 0 | 1 }> = {
   musicVol: { side: 0, line: 0 }, track: { side: 0, line: 1, sub: true }, sfxVol: { side: 0, line: 2 }, compact: { side: 0, line: 3 },
-  row: { side: 1, line: 0 }, clock: { side: 1, line: 1, zone: 0 }, week: { side: 1, line: 1, zone: 1 }, lang: { side: 1, line: 2 }, fx: { side: 1, line: 3 },
+  row: { side: 1, line: 0 }, clock: { side: 1, line: 1, zone: 0 }, week: { side: 1, line: 1, zone: 1 }, money: { side: 1, line: 1, zone: 0 }, today: { side: 1, line: 1, zone: 1 }, lang: { side: 1, line: 2 }, fx: { side: 1, line: 3 },
 }
 // A muted speaker, 12 × 12: the speaker grey, a red cross where its sound would be.
 const MUTED = ['............', '............', '....L.......', '...LL.......', 'LLLLL.R...R.', 'LGLLL..R.R..', 'LLLLL...R...', 'LLLLL..R.R..', '...LL.R...R.', '....L.......', '............', '............']
@@ -193,7 +193,7 @@ export function withScroll(scene: Scene, p: number, title: string, cards: readon
         putAt(col, HEAD, name, INK)
         const rx = Math.ceil(((col + textWidth(name)) * TEXT_PX + 6) / U), re = Math.floor(((col + bw) * TEXT_PX) / U)
         box(rx, (HEAD + 6) / U, re - rx, 1, BURNT)
-        ids.forEach((id, line) => {
+        ids.filter(id => byId.has(id)).forEach((id, line) => { // the cards there, top down (a gateway's MON and TODAY take 5H's and 7D's places)
           const it = byId.get(id)
           if (!it) return
           const T = TOPS[line]!, L = col * TEXT_PX - 2, BW = Math.ceil((bw * TEXT_PX + 4) / 2) * 2

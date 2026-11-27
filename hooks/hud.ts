@@ -3,6 +3,7 @@
 import { type StatusSeg, wide } from './game'
 import { AM, PM } from './font'
 import { ICON, type IconName } from './icons'
+import { t, type Lang } from './i18n'
 
 export type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 export type WorkLog = { skip?: boolean; calendar?: string; title?: string; start?: string } | null
@@ -149,6 +150,8 @@ export const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${p
 // ASCII labels, since a terminal cell holds one narrow glyph.
 //   terminal: context fill and spend (work-log and the model are on its status line and header)
 //   desktop:  work-log or the scribe; usage rides the status bar under the window instead (statusSegs)
+export type MonStyle = 'spent' | 'left'
+export type TodayStyle = 'daily' | 'reset'
 export type Info = {
   ctx?: number
   limits: Limit[]
@@ -158,7 +161,8 @@ export type Info = {
   scribe?: { text?: string; writing: boolean; live?: IconName } // set: the desktop row is the scribe instead of work-log
   clock?: ClockStyle // how the 5-hour reset reads (/pixmage clock, a click on it)
   week?: WeekStyle // how the 7-day reset reads, on its own (a click on it)
-  money?: boolean // the proxy's month as money spent, not a share (a click on MON)
+  money?: MonStyle // how the proxy's month reads: a share (absent), spent of the budget, or what is left (a click on MON)
+  today?: TodayStyle // what TODAY reads: today's spend (absent), what each day left may spend, or the budget's reset day
 }
 type Seg = { text: string; color: number } | { gauge: number; width: number; color: number }
 const C = { label: 0xffe08a, dim: 0xd6dcff, text: 0xffffff, money: 0xffd75f } // dim stays readable on the bright day sky
@@ -269,10 +273,17 @@ export function statusSegs(info: Info, save: { level: number; xp: number }, need
     // A click on MON shows what was spent of the month's budget instead of the share (the proxy's own figures).
     const pct = b.max ? (b.spend / b.max) * 100 : undefined
     const mon = gauge(ICON.coin, 'MON', pct, warn).map((x, i) => (i === 0 ? { ...x, id: 'money' } : x))
-    if (info.money) mon[2] = { text: fit(b.max ? `${money(b.spend)}/${money(b.max)}` : money(b.spend), 15, true), color: pct === undefined ? C.text : warn(pct), id: 'money' }
+    if (info.money === 'left' && b.max) mon[2] = { text: fit(`${money(b.max - b.spend)} ${t(lang as Lang, 'left')}`, 15, true), color: warn(pct!), id: 'money' }
+    else if (info.money) mon[2] = { text: fit(b.max ? `${money(b.spend)}/${money(b.max)}` : money(b.spend), 15, true), color: pct === undefined ? C.text : warn(pct), id: 'money' }
     else mon[2] = { ...mon[2]!, id: 'money' }
     out.push(SEP, ...mon)
-    out.push(SEP, { text: `${ICON.coin}TODAY `, color: C.label, id: 'money' }, { text: fit(b.today === undefined ? '--' : money(b.today), 8, true), color: b.today === undefined ? C.dim : C.money, id: 'money' }) // a fixed width: the bar holds still; a click here too switches MON
+    // TODAY: today's spend, what each day to the reset may spend, or the reset's day; a fixed width, so the bar holds still.
+    const resets = b.resetsAt ? new Date(b.resetsAt) : undefined, ok = resets && !Number.isNaN(resets.getTime())
+    const days = ok ? Math.max(1, Math.ceil((resets!.getTime() - now.getTime()) / 86_400_000)) : undefined
+    const [word, value] = info.today === 'daily' ? ['DAILY', b.max && days ? money(Math.max(0, b.max - b.spend) / days) : undefined]
+      : info.today === 'reset' ? ['RESET', ok ? `${resets!.getMonth() + 1}/${resets!.getDate()}` : undefined]
+      : ['TODAY', b.today === undefined ? undefined : money(b.today)]
+    out.push(SEP, { text: `${ICON.coin}${word} `, color: C.label, id: 'today' }, { text: fit(value ?? '--', 8, true), color: value === undefined ? C.dim : C.money, id: 'today' })
   } else {
     // The two windows always hold their places; one not reported yet waits there empty.
     // A window whose reset has passed is empty again, though no reply has said so yet: 0%, its next reset unknown.
