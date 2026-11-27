@@ -726,8 +726,9 @@ export const register: Register = (on, options) => {
       const d = e.data as { x: number; y: number; cols: number; rows: number; drag?: true } | { bottom: number; whole?: true }
       if ('bottom' in d) { if (d.whole) { if (d.bottom > padRow) dlog(`hover row ${d.bottom - 1} size=${padSize} guess=${guessRows.toFixed(2)}`); padRow = Math.max(padRow, d.bottom) } else padBottom = Math.max(padBottom, d.bottom); return {} } // the lowest the pointer hovered (reset with the size)
       const f = d.x / d.cols
-      // Seen to a fraction: that. Seen by whole rows: the guess, but never above the lowest row the pointer was in (the picture reaches into it).
-      const tall = padBottom > guessRows * 0.75 ? padBottom : Math.max(guessRows, padRow - 0.95) // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
+      // The guess from the picture's width, unless the pointer was seen lower: it may not have reached the bottom yet
+      // (a narrower slot, as when the sidebar opens, forgets what was seen), so what it saw only ever makes the picture taller.
+      const tall = Math.max(guessRows, padBottom, padRow - 0.95) // the picture's height, in the pad's rows (the pointer seen only near the top says nothing yet)
       const y = (d.y / tall) * textRows * 2 * TEXT_PX // how far down the picture, in the text layer's pixels
       const row = Math.floor(y / (2 * TEXT_PX)) // which text row of the picture
       // A drag keeps to the slider it started on, even off its bar.
