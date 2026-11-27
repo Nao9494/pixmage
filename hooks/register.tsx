@@ -543,7 +543,11 @@ export const register: Register = (on, options) => {
       compacting = true
       compactArmed = false // once per fill, even if it stays over (a failed or small compaction)
       $.ui.toast(t(lang, 'compacting', Math.round(info.ctx!)))
-      void $.session.compact().finally(() => { compacting = false })
+      // The desktop app (an SDK session) refuses a plugin's compaction for now; /compact, run as if typed, runs once it is idle.
+      void $.session.compact()
+        .catch(async err => { dlog(`compact refused: ${String(err)}`); await $.command.run({ command: 'compact' }); dlog('compact run as /compact') })
+        .catch(err => dlog(`compact failed: ${String(err)}`))
+        .finally(() => { compacting = false })
     }
     if (e.changed.includes('cost')) {
       $.clock.after(BUDGET_SETTLE, () => void refreshBudget($, game.save, info, seen, true))
