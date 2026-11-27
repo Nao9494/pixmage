@@ -258,7 +258,7 @@ async function playMusic($: EngineInterface, m: Music, change = false, from?: nu
   const began = Date.now()
   if (from === undefined || !mp3) {
     if (mp3) { m.pos = { t0: Date.now(), byte: mp3.first, rate: mp3.rate }; void $.store.set('music:pos', { track, byte: m.pos.byte, t0: m.pos.t0 }) }
-    played = await $.audio.play({ asset: `music/${track}` }, { gain, signal: stop.signal }).then(() => true, () => false)
+    played = await $.audio.play({ asset: `music/${track}` }, { gain, signal: stop.signal }).then(() => true, err => { dlog(`music refused: ${String(err)}`); return false })
   } else {
     played = true
     for (let at = from; ;) { // piece by piece to the end
@@ -756,6 +756,7 @@ export const register: Register = (on, options) => {
         if (list.length) {
           const next = list[(list.indexOf(music.track ?? '') + 1) % list.length]!
           music.track = next
+          music.failed = false // a track that would not play stopped the music: picking another tries again
           keep($, 'music:track', next)
           const now = Date.now()
           seenPick = now
